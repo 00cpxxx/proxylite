@@ -1,4 +1,4 @@
-Proxylite
+proxylite
 =========
 
 About the Project
@@ -49,6 +49,7 @@ To disable IPV4 don't set -p4 or set to 0 (zero), same for IPV6.
 Using -f|--fork disables -d|--debug
 
 Examples:
+
 `./proxylite -p4 3000 -p6 3001 -f`
 Run the application in the background listening for IPv4 connections in port 3000 and 3001 for IPv6.
 
@@ -166,16 +167,16 @@ for example let's take this URL:
 When a proxy server is enabled in the client browser it could request this in at least three
 different ways:
 
-`GET http://alexa.pro.br/~bruno HTTP/1.0\r\n
-\r\n`
+  GET http://alexa.pro.br/~bruno HTTP/1.0\r\n
+  \r\n
 
-`GET /~bruno HTTP/1.1\r\n
-Host: alexa.pro.br\r\n
-\r\n`
+  GET /~bruno HTTP/1.1\r\n
+  Host: alexa.pro.br\r\n
+  \r\n
 
-`GET http://alexa.pro.br/~bruno HTTP/1.1\r\n
-Host: alexa.pro.br\r\n
-\r\n`
+  GET http://alexa.pro.br/~bruno HTTP/1.1\r\n
+  Host: alexa.pro.br\r\n
+  \r\n
 
 When the proxy server receives that it has to parse the line to extract the requested method (GET)
 and the host part (alexa.pro.br). The double line end (\r\n\r\n) tells that the header ended.
@@ -194,8 +195,8 @@ program performance is affected. Most socket operations are really fast and the 
 works very well, but unfortunately the name resolution used to find the IP of the servers is
 a blocking call so if the name server takes to long to respond the application will have to wait.
 
-The limit of sockets possible to take care at the same time is 128 in Windows and 1024 in *nix
-systems. This happens due to the difference between the implementations of the FD_* operations
+The limit of sockets possible to take care at the same time is 128 in Windows and 1024 in Unix
+systems. This happens due to the difference between the implementations of the "FD_" operations
 between the different operating systems.
 
 To ensure compatibility with Windows versions <= XP it's not possible to print IPv6 addresses
@@ -225,3 +226,10 @@ some of them are listed below:
 
 I have been using the application for some time now and everything seems stable, never crashed
 so far.
+
+Contact Information
+------
+My name is Bruno Jesus and I'm a brazilian living in Sao Paulo. To contact me send me an email at
+00cpxxx@gmail.com
+
+Feel free to send suggestions, comments or a hello. Spam is welcome too since gmail filters it all.
