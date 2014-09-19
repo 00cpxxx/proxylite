@@ -61,12 +61,15 @@
 /* Default HTTP port. */
 #define DEFAULT_HTTP_PORT  80
 
-static int master_sock[2], connections, unique_id;
-static struct CONNECTION *head;
-static int running, debug;
-static unsigned long global_sent, global_recv;
-static unsigned short port_v4, port_v6;
-static enum SOCK_FAMILY preferred_family;
+static struct CONFIG
+{
+    int master_sock[2], connections, unique_id;
+    struct CONNECTION *head;
+    int running, debug;
+    unsigned long global_sent, global_recv;
+    unsigned short port_v4, port_v6;
+    enum SOCK_FAMILY preferred_family;
+} cfg;
 
 /* Return codes for the name resolve functions. Defines are used just to show
  * different ways to achieve the same thing. Do you know the advantages of enum? */
@@ -141,9 +144,9 @@ struct CONNECTION
 };
 
 /* Different levels of log verbosity. The log is mostly for development only. */
-#define dprintf1 if(debug >= 1) printf
-#define dprintf2 if(debug >= 2) printf
-#define dprintf3 if(debug >= 3) printf
+#define dprintf1 if(cfg.debug >= 1) printf
+#define dprintf2 if(cfg.debug >= 2) printf
+#define dprintf3 if(cfg.debug >= 3) printf
 
 int send_http_error(int sock, enum HTTP_ERROR error)
 {
@@ -178,7 +181,7 @@ int send_http_error(int sock, enum HTTP_ERROR error)
 
     res = sock_send(sock, buffer, sz);
     if (res > 0)
-        global_sent += res;
+        cfg.global_sent += res;
     return res == sz;
 }
 
@@ -230,7 +233,7 @@ int send_buffer(int target_sock, struct DATA_BUFFER *data)
         res = sock_send(target_sock, data->buffer + data->pos, send_sz);
         if (res > 0)
         {
-            global_sent += res;
+            cfg.global_sent += res;
             data->pos += res;
             if (data->pos == data->used)
                 data->pos = data->used = 0;
@@ -261,7 +264,7 @@ int recv_buffer(int source_sock, struct DATA_BUFFER *data, int relay_sock)
     res = sock_recv(source_sock, p, sizeof(lbuffer));
     if (res > 0)
     {
-        global_recv += res;
+        cfg.global_recv += res;
         /* If there is no data in the buffer send it directly to other side.
          * If there is data in the buffer we have to queue the data to avoid
          * sending things out of order. */
@@ -273,7 +276,7 @@ int recv_buffer(int source_sock, struct DATA_BUFFER *data, int relay_sock)
                 res2 = sock_send(relay_sock, p, res);
                 if (res2 > 0)
                 {
-                    global_sent += res2;
+                    cfg.global_sent += res2;
                     dprintf2("Bridged %d/%d bytes.\n", res2, res);
                     res -= res2;
                     p += res2;
@@ -311,7 +314,7 @@ void clear_connection(struct CONNECTION *conn)
     if (conn->client.data.buffer)
         free(conn->client.data.buffer);
     dprintf1("#%d Clear connection (requests : %d, reuses : %d, total : %d).\n",
-             conn->unique_id, conn->requests, conn->reuses, --connections);
+             conn->unique_id, conn->requests, conn->reuses, --cfg.connections);
 }
 
 struct CONNECTION* new_connection(int listen_sock)
@@ -330,14 +333,14 @@ struct CONNECTION* new_connection(int listen_sock)
             memcpy(conn->client.addr, addr, sizeof(addr));
             conn->state = ST_CLIENT_CONNECTED;
             conn->server.sock = INVALID_SOCK;
-            conn->unique_id = unique_id++;
+            conn->unique_id = cfg.unique_id++;
             conn->error = ERROR_FREE;
             /* Very lame approach to reset the ID. */
-            if (unique_id > 100000)
-                unique_id = 0;
+            if (cfg.unique_id > 100000)
+                cfg.unique_id = 0;
             sock_ntop(addr, str);
             dprintf1("#%d New connection from '%s' (total : %d).\n",
-                     conn->unique_id, str, ++connections);
+                     conn->unique_id, str, ++cfg.connections);
         }
         else
             sock_close(new_sock);
@@ -516,7 +519,7 @@ int resolve_address(char *host, unsigned short port, void *buffer)
     int res;
 
     dprintf1("... ");
-    res = resolve_name(host, buffer, port, preferred_family);
+    res = resolve_name(host, buffer, port, cfg.preferred_family);
     if (res <= 0)
     {
         dprintf1("Resolve '%s' failed with error %d.\n", host, res);
@@ -542,10 +545,10 @@ void app_loop(void)
     time_t now, current;
     int loops_per_sec;
 
-    running = 1;
+    cfg.running = 1;
     loops_per_sec = 0;
     now = current = time(NULL);
-    while (running)
+    while (cfg.running)
     {
         struct CONNECTION *p, *new, *n;
         struct timeval timeout;
@@ -561,11 +564,11 @@ void app_loop(void)
         FD_ZERO(&set[1]);
         FD_ZERO(&set[2]);
 
-        maxsd = master_sock[0] > master_sock[1] ? master_sock[0] : master_sock[1];
-        if (master_sock[0] != INVALID_SOCK)
-            FD_SETS_RE(master_sock[0]);
-        if (master_sock[1] != INVALID_SOCK)
-            FD_SETS_RE(master_sock[1]);
+        maxsd = cfg.master_sock[0] > cfg.master_sock[1] ? cfg.master_sock[0] : cfg.master_sock[1];
+        if (cfg.master_sock[0] != INVALID_SOCK)
+            FD_SETS_RE(cfg.master_sock[0]);
+        if (cfg.master_sock[1] != INVALID_SOCK)
+            FD_SETS_RE(cfg.master_sock[1]);
 
         /* We will use this in a lot of places and even if the loop takes
          * over one second to run there is no problem, our timeouts don't
@@ -575,14 +578,14 @@ void app_loop(void)
         {
             i = current - now;
             dprintf1("Loops %d - Spent %d second(s) - Sent %lu Kb/s, Recv %lu Kb/s\n",
-                     loops_per_sec, i, global_sent / (1024 * i), global_recv / (1024 * i));
-            global_sent = global_recv = 0;
+                     loops_per_sec, i, cfg.global_sent / (1024 * i), cfg.global_recv / (1024 * i));
+            cfg.global_sent = cfg.global_recv = 0;
             now = current;
             loops_per_sec = 0;
         }
         loops_per_sec++;
 
-        for (fast_select = 0, p = head; p; p = n)
+        for (fast_select = 0, p = cfg.head; p; p = n)
         {
             n = p->next; /* (p) may be freed, ensure we have the next pointer. */
             if (p->state == ST_CLEAR)
@@ -598,9 +601,9 @@ void app_loop(void)
                 if (p->prev)
                     p->prev->next = p->next;
                 if (!p->next && !p->prev)
-                    head = NULL;
-                else if (p == head)
-                    head = p->next;
+                    cfg.head = NULL;
+                else if (p == cfg.head)
+                    cfg.head = p->next;
 
                 free(p);
                 continue;
@@ -690,7 +693,7 @@ void app_loop(void)
                     {
                         /* Smart people may try to bring the proxy down by making us loop
                          * connecting to the same port the service is provided on. */
-                        if (port == port_v4 || port == port_v6)
+                        if (port == cfg.port_v4 || port == cfg.port_v6)
                         {
                             /* Ideally this would check for all IP address we have, but to
                              * simplify our approach we will only match localhost and current
@@ -835,37 +838,37 @@ void app_loop(void)
         if (changes <= 0)
             continue;
 
-        for (i = 0; i < sizeof(master_sock) / sizeof(master_sock[0]); i++)
+        for (i = 0; i < sizeof(cfg.master_sock) / sizeof(cfg.master_sock[0]); i++)
         {
-            if (master_sock[i] == INVALID_SOCK)
+            if (cfg.master_sock[i] == INVALID_SOCK)
                 continue;
 
             /* If the READ bit is set it means a new connection was received. */
-            if (FD_ISSET(master_sock[i], &set[0]))
+            if (FD_ISSET(cfg.master_sock[i], &set[0]))
             {
-                new = new_connection(master_sock[i]);
+                new = new_connection(cfg.master_sock[i]);
                 if (new)
                 {
-                    if (head)
-                        head->prev = new;
-                    new->next = head;
+                    if (cfg.head)
+                        cfg.head->prev = new;
+                    new->next = cfg.head;
                     new->prev = NULL;
-                    head = new;
+                    cfg.head = new;
 
-                    head->client.connection = head->last_operation = now;
+                    cfg.head->client.connection = cfg.head->last_operation = now;
                 }
                 changes--;
             }
             /* Check for errors in the listening socket. */
-            else if(FD_ISSET(master_sock[i], &set[2]))
+            else if(FD_ISSET(cfg.master_sock[i], &set[2]))
             {
-                running = 0;
+                cfg.running = 0;
                 dprintf1("Master socket error, quitting...\n");
                 changes--;
             }
         }
 
-        for (p = head; changes && p; p = p->next)
+        for (p = cfg.head; changes && p; p = p->next)
         {
             ok = 0;
             /* Receive data. */
@@ -1011,7 +1014,7 @@ void app_loop(void)
 
 int start_proxy(char *bind_v4, unsigned short p_v4,
                 char *bind_v6, unsigned short p_v6,
-                enum SOCK_FAMILY p_family, int debug_enable)
+                enum SOCK_FAMILY preferred_family, int debug_enable)
 {
     if (!p_v4 && !p_v6)
     {
@@ -1020,51 +1023,53 @@ int start_proxy(char *bind_v4, unsigned short p_v4,
     }
 
     /* We need the ports to test connection loops later. */
-    port_v4 = p_v4;
-    port_v6 = p_v6;
-    preferred_family = p_family;
+    cfg.port_v4 = p_v4;
+    cfg.port_v6 = p_v6;
+    cfg.preferred_family = preferred_family;
 
     if (!sock_init())
         return -1;
 
-    debug = debug_enable;
+    cfg.debug = debug_enable;
 
-    if (port_v4)
+    if (cfg.port_v4)
     {
-        master_sock[0] = sock_create(IPV4, TCP_SOCK, bind_v4, port_v4, SOCK_ASYNC | SOCK_LISTEN);
-        if (master_sock[0] == INVALID_SOCK)
+        cfg.master_sock[0] = sock_create(IPV4, TCP_SOCK, bind_v4,
+                                         cfg.port_v4, SOCK_ASYNC | SOCK_LISTEN);
+        if (cfg.master_sock[0] == INVALID_SOCK)
         {
             printf("Failed to create and bind listener socket for IPV4\n");
-            port_v4 = 0;
+            cfg.port_v4 = 0;
         }
     }
     else
-        master_sock[0] = INVALID_SOCK;
+        cfg.master_sock[0] = INVALID_SOCK;
 
-    if (port_v6)
+    if (cfg.port_v6)
     {
-        master_sock[1] = sock_create(IPV6, TCP_SOCK, bind_v6, port_v6, SOCK_ASYNC | SOCK_LISTEN);
-        if (master_sock[1] == INVALID_SOCK)
+        cfg.master_sock[1] = sock_create(IPV6, TCP_SOCK, bind_v6,
+                                         cfg.port_v6, SOCK_ASYNC | SOCK_LISTEN);
+        if (cfg.master_sock[1] == INVALID_SOCK)
         {
             printf("Failed to create and bind listener socket for IPV6\n");
-            port_v6 = 0;
+            cfg.port_v6 = 0;
         }
     }
     else
-        master_sock[1] = INVALID_SOCK;
+        cfg.master_sock[1] = INVALID_SOCK;
 
-    return (!p_v4 || master_sock[0] != INVALID_SOCK) &&
-           (!p_v6 || master_sock[1] != INVALID_SOCK);
+    return (!p_v4 || cfg.master_sock[0] != INVALID_SOCK) &&
+           (!p_v6 || cfg.master_sock[1] != INVALID_SOCK);
 }
 
 void end_proxy(void)
 {
     struct CONNECTION *p, *n;
 
-    sock_close(master_sock[0]);
-    sock_close(master_sock[1]);
+    sock_close(cfg.master_sock[0]);
+    sock_close(cfg.master_sock[1]);
 
-    for (p = head; p; p = n)
+    for (p = cfg.head; p; p = n)
     {
         n = p->next;
         /* Warn the users we are disabling the server. But only if they are not
@@ -1074,7 +1079,7 @@ void end_proxy(void)
         clear_connection(p);
         free(p);
     }
-    head = NULL;
+    cfg.head = NULL;
 
     if (!sock_end())
         dprintf1("We leaked socket descriptors.\n");
@@ -1083,7 +1088,7 @@ void end_proxy(void)
 void stop_proxy(void)
 {
     dprintf1("Stopping server...\n");
-    running = 0;
+    cfg.running = 0;
 }
 
 #define MAX_SOCK_TESTS 100
