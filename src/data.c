@@ -49,7 +49,7 @@
 /* Max cache to store before stalling the connection (stop recv() to
  * disable TCP window size), the amounted of memory allocated will be
  * slightly above this value. */
-#define HARD_BUFFER_LIMIT (4 * 1024 * 1024)
+#define HARD_BUFFER_LIMIT (80 * 1024)
 /* Max send/recv per time. */
 #define MAX_BUFFER_SZ 8192
 /* A host name can have up to 255 bytes as per the standard. */
@@ -64,7 +64,8 @@
 static int master_sock[2], connections, unique_id;
 static struct CONNECTION *head;
 static int running, debug;
-unsigned short port_v4, port_v6;
+static unsigned long global_sent, global_recv;
+static unsigned short port_v4, port_v6;
 
 /* Return codes for the name resolve functions. Defines are used just to show
  * different ways to achieve the same thing. Do you now the advantages of enum? */
@@ -129,7 +130,7 @@ struct CONNECTION
 
     struct SOCKET
     {
-        int sock;
+        int sock, writable;
         time_t connection;
         struct DATA_BUFFER data;
         unsigned char addr[SOCK_ADDR_SZ];
@@ -155,7 +156,7 @@ int send_http_error(int sock, enum HTTP_ERROR error)
         "The proxy server is going down.",
     };
     static const int code[] = {400, 403, 500, 502, 504, 503};
-    int sz, data_sz;
+    int sz, data_sz, res;
 
     /* The magic number below is the size of the error message including the error code. */
     data_sz = 134 + strlen(reasons[error]);
@@ -174,7 +175,10 @@ int send_http_error(int sock, enum HTTP_ERROR error)
         "</body></html>",
         code[error], data_sz, code[error], reasons[error]);
 
-    return sock_send(sock, buffer, sz) == sz;
+    res = sock_send(sock, buffer, sz);
+    if (res > 0)
+        global_sent += res;
+    return res == sz;
 }
 
 void skip_data(struct DATA_BUFFER *data, int skip_sz)
@@ -195,7 +199,7 @@ int append_data(struct DATA_BUFFER *data, unsigned char *lbuffer, int sz)
         int new_size;
 
         /* Plus 16 just to ensure there is always space for a NULL byte */
-        new_size = data->max ? data->max + data->max / 2 : MAX_BUFFER_SZ * 10;
+        new_size = data->max ? data->max + data->max / 2 : MAX_BUFFER_SZ * 2;
         new_buffer = realloc(data->buffer, new_size + 16);
         if (!new_buffer)
             return -3;
@@ -225,17 +229,12 @@ int send_buffer(int target_sock, struct DATA_BUFFER *data)
         res = sock_send(target_sock, data->buffer + data->pos, send_sz);
         if (res > 0)
         {
+            global_sent += res;
             data->pos += res;
             if (data->pos == data->used)
                 data->pos = data->used = 0;
             dprintf2("Buffer sent %d/%d bytes, remaining %d bytes.\n",
                      res, send_sz, data->used - data->pos);
-        }
-        else if (res < 0)
-        {
-            /* Is this a fatal error? */
-            if (!CHECK_BROKEN)
-                res = 0;
         }
         /* If we can't send there is no problem, we will try again later. */
     }
@@ -244,10 +243,7 @@ int send_buffer(int target_sock, struct DATA_BUFFER *data)
 
 int recv_buffer(int source_sock, struct DATA_BUFFER *data, int relay_sock)
 {
-    /* Receive only half of what we send to reduce the need for buffering the
-     * data to maximum extent. This means that data cache will only happen if
-     * the client does not drain fast enough. */
-    unsigned char lbuffer[MAX_BUFFER_SZ / 2], *p = lbuffer;
+    unsigned char lbuffer[MAX_BUFFER_SZ], *p = lbuffer;
     int res, res2 = 0;
 
     /* If the other side buffer is full don't read more data from this side.
@@ -258,13 +254,13 @@ int recv_buffer(int source_sock, struct DATA_BUFFER *data, int relay_sock)
         /* Since we can't receive try at least sending some more buffer. */
         if (relay_sock != INVALID_SOCK)
             send_buffer(relay_sock, data);
-        dprintf3("Connection stalled! Hurry send data faster!\n");
         return -2;
     }
 
     res = sock_recv(source_sock, p, sizeof(lbuffer));
     if (res > 0)
     {
+        global_recv += res;
         /* If there is no data in the buffer send it directly to other side.
          * If there is data in the buffer we have to queue the data to avoid
          * sending things out of order. */
@@ -276,6 +272,7 @@ int recv_buffer(int source_sock, struct DATA_BUFFER *data, int relay_sock)
                 res2 = sock_send(relay_sock, p, res);
                 if (res2 > 0)
                 {
+                    global_sent += res2;
                     dprintf2("Bridged %d/%d bytes.\n", res2, res);
                     res -= res2;
                     p += res2;
@@ -530,7 +527,15 @@ int resolve_address(char *host, unsigned short port, void *buffer)
     return STATUS_OK;
 }
 
-#define FD_SETS(x) { FD_SET(x, &set[0]); FD_SET(x, &set[1]); FD_SET(x, &set[2]); }
+#define FD_SETS_RE(x) {                     \
+                        FD_SET(x, &set[0]); \
+                        FD_SET(x, &set[2]); \
+                      }
+#define FD_ADD_POLL(x, y) {                 \
+                            FD_SET(x, y);   \
+                            if (x > maxsd)  \
+                                maxsd = x;  \
+                          }
 void app_loop(void)
 {
     time_t now, current;
@@ -557,9 +562,9 @@ void app_loop(void)
 
         maxsd = master_sock[0] > master_sock[1] ? master_sock[0] : master_sock[1];
         if (master_sock[0] != INVALID_SOCK)
-            FD_SETS(master_sock[0]);
+            FD_SETS_RE(master_sock[0]);
         if (master_sock[1] != INVALID_SOCK)
-            FD_SETS(master_sock[1]);
+            FD_SETS_RE(master_sock[1]);
 
         /* We will use this in a lot of places and even if the loop takes
          * over one second to run there is no problem, our timeouts don't
@@ -568,7 +573,9 @@ void app_loop(void)
         if (current != now)
         {
             i = current - now;
-            dprintf3("Loops %d - Spent %d second(s)\n", loops_per_sec, i);
+            dprintf1("Loops %d - Spent %d second(s) - Sent %lu Kb/s, Recv %lu Kb/s\n",
+                     loops_per_sec, i, global_sent / (1024 * i), global_recv / (1024 * i));
+            global_sent = global_recv = 0;
             now = current;
             loops_per_sec = 0;
         }
@@ -616,9 +623,16 @@ void app_loop(void)
                 }
                 else
                 {
-                    /* Send any buffered data to client. */
-                    if (send_buffer(p->client.sock, &p->server.data))
-                        fast_select++; /* While there is data in the buffer we rush! */
+                    if (p->client.writable)
+                    {
+                        /* Send any buffered data to client. */
+                        res = send_buffer(p->client.sock, &p->server.data);
+                        if (res > 0)
+                            fast_select++;
+                        /* If we can't send the data we will wait for select() write signal. */
+                        else if (res < 0)
+                            p->client.writable = 0;
+                    }
 
                     if (p->server.sock != INVALID_SOCK)
                     {
@@ -626,8 +640,15 @@ void app_loop(void)
                          * is a tunnel (look for RELAY_COMMENT in the code). */
                         if (p->tunnel || !p->request_end)
                         {
-                            if (send_buffer(p->server.sock, &p->client.data))
-                                fast_select++; /* While there is data in the buffer we rush! */
+                            if (p->server.writable)
+                            {
+                                res = send_buffer(p->server.sock, &p->client.data);
+                                if (res > 0)
+                                    fast_select++;
+                                /* If we can't send the data we will wait for select() write signal. */
+                                else if (res < 0)
+                                    p->server.writable = 0;
+                            }
                         }
                     }
                     else if (!p->server.data.used)
@@ -670,9 +691,9 @@ void app_loop(void)
                          * connecting to the same port the service is provided on. */
                         if (port == port_v4 || port == port_v6)
                         {
-                            /* Ideally this would check for all IP we have, but to simplify
-                             * our approach we will only match localhost and current sock
-                             * bound interface and target address.
+                            /* Ideally this would check for all IP address we have, but to
+                             * simplify our approach we will only match localhost and current
+                             * sock bound interface and target address.
                              * To avoid this happening for every connection remember not
                              * to set your proxy to ports like 80 or 443.
                              * Even if the user starts an IPV4 and attempts an IPV6 connection
@@ -724,6 +745,8 @@ void app_loop(void)
                     {
                         p->state = ST_BRIDGE;
                         p->reuses++; /* Statistics. */
+                        /* Assume OK to send. */
+                        p->client.writable = p->server.writable = 1;
                     }
                     p->last_operation = now;
                 }
@@ -754,9 +777,9 @@ void app_loop(void)
             if (p->state != ST_CLEAR)
             {
                 /* Check the client socket for reading. */
-                FD_SET(p->client.sock, &set[0]);
-                if (p->client.sock > maxsd)
-                    maxsd = p->client.sock;
+                FD_ADD_POLL(p->client.sock, &set[0]);
+                if (!p->client.writable)
+                    FD_ADD_POLL(p->client.sock, &set[1]);
 
                 if (p->server.sock != INVALID_SOCK)
                 {
@@ -765,10 +788,18 @@ void app_loop(void)
                     {
                         FD_SET(p->server.sock, &set[1]);
                         FD_SET(p->server.sock, &set[2]); /* Also check for exception. */
+                        if (p->server.sock > maxsd)
+                            maxsd = p->server.sock;
                     }
-                    FD_SET(p->server.sock, &set[0]);
-                    if (p->server.sock > maxsd)
-                        maxsd = p->server.sock;
+                    /* Only check for reading in the server socket if we can write
+                     * to the client socket. This reduces the amount of loops because
+                     * there is no point in trying to receive more data from the server
+                     * if the client is not draining. */
+                    if (p->client.writable)
+                        FD_ADD_POLL(p->server.sock, &set[0]); /* Read. */
+
+                    if (!p->server.writable)
+                        FD_ADD_POLL(p->server.sock, &set[1]); /* Write. */
                 }
             }
 
@@ -790,8 +821,8 @@ void app_loop(void)
                 dprintf1("#%d Wait for header timeout.\n", p->unique_id);
             }
         }
-        /* If we are not doing anything wait for 2 seconds and 10ms in the select(). */
-        timeout.tv_sec = fast_select ? 0 : 2;
+        /* If we are not doing anything wait for 4 seconds and 10ms in the select(). */
+        timeout.tv_sec = fast_select ? 0 : 4;
         timeout.tv_usec = 10000;
         do
         {
@@ -856,6 +887,12 @@ void app_loop(void)
                         p->state = ST_CLEAR;
                     changes--;
                 }
+                /* Are we testing if the socket is available for writing? */
+                if (!p->client.writable && FD_ISSET(p->client.sock, &set[1]))
+                {
+                    p->client.writable = 1;
+                    changes--;
+                }
             }
 
             if (p->server.sock != INVALID_SOCK)
@@ -898,6 +935,12 @@ void app_loop(void)
                         ok += res;
                         changes--;
                     }
+                    /* Are we testing if the socket is available for writing? */
+                    if (!p->server.writable && FD_ISSET(p->server.sock, &set[1]))
+                    {
+                        p->server.writable = 1;
+                        changes--;
+                    }
                 }
                 else if (p->state == ST_WAIT_CONNECTION)
                 {
@@ -936,6 +979,8 @@ void app_loop(void)
                             dprintf1("#%d Connected.\n", p->unique_id);
                             p->state = ST_BRIDGE;
                             p->server.connection = now;
+                            /* Assume OK to send. */
+                            p->client.writable = p->server.writable = 1;
 
                             /* If this is a tunnel connection tell the client we are connected. */
                             if (p->tunnel)
@@ -955,14 +1000,13 @@ void app_loop(void)
                 }
             }
 
-            /* Some operations may increase ok, some may decrease but we will always
-             * end having the connection time updated in one of the loops. */
-            if (ok)
+            /* If data was sent/received or we got connected update the timeout variable. */
+            if (ok > 0)
                 p->last_operation = now;
         }
     }
 }
-#undef FD_SETS
+#undef FD_SETS_RE
 
 int start_proxy(char *bind_v4, unsigned short p_v4,
                 char *bind_v6, unsigned short p_v6, int debug_enable)
