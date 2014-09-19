@@ -77,8 +77,7 @@ the standards (includes Windows).
 
 The code was written in C because it's the language I know better than others and also because
 the target computer was an Atmel ARM G20 processor with 64Mb of RAM. Later I switched to another
-more powerful computer (ARM Cortex A5 with 512Mb of RAM) but the project still runs in the G20
-(just need to reduce the size of buffer per connection).
+more powerful computer (ARM Cortex A5 with 512Mb of RAM) but the project still runs in the G20.
 
 When a client connects it is added to a double linked-list, the application loop runs through
 this list and checks the state of the connection making the appropriate operations. The first
@@ -90,7 +89,7 @@ To simplify and make this operation faster we only change the header if necessar
 add or remove anything from the header, except the server prefix from the URL.
 
 We don't care about what is being transmitted between client and server and we violate RFC 2068
-deliberately by not adding a "Via" header in the HTTP request to tell the server that the request
+deliberately by not adding a "Via" header in the HTTP request; to tell the server that the request
 is being routed through a proxy application. Also we do not support the non-standard header
 field called "Proxy-Connection". That field was invented as an attempt to speedup the proxy calls
 by leaving the connection between the client and proxy open even if the remote side disconnects,
@@ -109,8 +108,8 @@ new data to receive). When we are in the process to connect to the server we als
 write and except changes (a write bit during a connect() call can mean a connection was
 established and a exception bit means the connect() failed). One may argue that the select call
 is outdated and does not perform well, stating that some sort of poll variant should be used.
-That is true but the aim of this project was to be portable, so select was chosen because it's
-present everywhere.
+That may be true but the aim of this project was to be portable, so select was chosen because
+it's present everywhere.
 
 The option SO_REUSEADDR is not used on purpose so you can see experience a TIME_WAIT status
 when killing and trying to restar the application. Also remember that SO_REUSEADDR in Windows
@@ -120,7 +119,8 @@ to the same door (allowing to an old problem called port hijacking).
 Name resolution was implemented with getaddrinfo() and we trust it completely to give us the
 best address because we always use the first returned instead of looping the list or giving it
 hints, this works very well in all platforms tested. Some hosts advertise support for IPv6 but
-the connect() call fails later, but that is not really our problem, we can't fix their side...
+the connect() call fails later or connects but never receives a reply, but that is not really
+our problem, we can't fix their side...
 
 A small function to test the server was also implemented, it does 100 connections divided in
 5 different major well-known sites through the proxy to test if it can handle all connections
@@ -140,10 +140,6 @@ buffer size is reached the proxy will stop reading data from the server (stallin
 connection) until the client is able to get the whole buffer. The use of the buffer is useful
 when the file being served is smaller than the proxy buffer size, when this happens the proxy
 can cache the whole data for the client to drain and the connection to the server may be closed.
-
-This local buffering stuff is done on purpose, it could be simply removed in favor of storing
-only the last packet that was could not be forwarded and avoiding new recv() calls until we
-can send this missing packet. If it was done like this the server would be 100% "zero-copy".
 
 The application does not generate any file logs by default and the information it can output
 when using the -d flag is mostly used for debugging purposes.
@@ -224,7 +220,6 @@ some of them are listed below:
  - Adding a log to file adding the date, client IP address and the target URL;
  - Turn it into an HTTP server by removing the bridging stuff and adding file reading;
  - Add an extra option like -4/-6 from wget to force using a specific server family address;
- - Turn the buffer into a circular (tricky since the buffer grows, better use a fixed buffer size);
  - Making the application multi-threaded and using some nice skills to deal with the C10k problem.
 
 I have been using the application for some time now and everything seems stable, never crashed
