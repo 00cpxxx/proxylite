@@ -34,19 +34,22 @@ Copied directly from the application running with -h parameter:
 	-h|--help    Show this help and quit
 	-f|--fork    Run in background (does not work in Windows)
 	-d|--debug   Print some debug messages while running
+	-4|--ipv4    Prefer IPV4 while resolving names
+	-6|--ipv6    Prefer IPV6 while resolving names
 	-p4 <port>   Port to bind the IPV4 socket
 	-p6 <port>   Port to bind the IPV6 socket
 	-b4 <ipv4>   Local IP to bind the IPV4 socket
 	-b6 <ipv6>   Local IP to bind the IPV6 socket
-	
-	--test <name> <port> Do 100 connections to the specified proxy
-	                   and request the '/' URI from 5 well known
-	                   sites, quit after the test.
+
+	 --test <name> <port> Do 100 connections to the specified proxy
+	                       and request the '/' URI from 5 well known
+	                       sites, quit after the test.
 	--ltest <name> <port> Same as previous but connects to 127.0.0.1:80
 
 	If -b4|-b6 is not set they will bind to all available addresses.
 	To disable IPV4 don't set -p4 or set to 0 (zero), same for IPV6.
-	Using -f|--fork disables -d|--debug
+	If -4 and -6 are used as argument the last used will be preferred.
+	Using -f|--fork disables -d|--debug.
 
 Examples:
 
