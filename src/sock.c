@@ -175,8 +175,10 @@ int sock_send(int sock, void *buffer, int sz)
 void sock_close(int sock)
 {
     if (sock != INVALID_SOCK)
+    {
         sockets_used--;
-    close(sock);
+        close(sock);
+    }
 }
 
 int sock_init(void)
