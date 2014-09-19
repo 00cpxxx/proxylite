@@ -19,7 +19,8 @@
 #ifndef CONNECTION_H
 #define CONNECTION_H
 
-int start_proxy(char *bind_v4, unsigned short port_v4, char *bind_v6, unsigned short port_v6, int debug_enable);
+int start_proxy(char *bind_v4, unsigned short port_v4, char *bind_v6, unsigned short port_v6,
+                enum SOCK_FAMILY efamily, int debug_enable);
 void app_loop(void);
 void stop_proxy(void);
 void end_proxy(void);

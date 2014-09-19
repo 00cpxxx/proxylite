@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include "sock.h"
 #include "connection.h"
 
 #define APP_VERSION "0.2"
@@ -45,6 +46,8 @@ void print_help(char *name)
            "   -h|--help    Show this help and quit\n"
            "   -f|--fork    Run in background (does not work in Windows)\n"
            "   -d|--debug   Print some debug messages while running\n"
+           "   -4|--ipv4    Prefer IPV4 while resolving names\n"
+           "   -6|--ipv6    Prefer IPV6 while resolving names\n"
            "   -p4 <port>   Port to bind the IPV4 socket\n"
            "   -p6 <port>   Port to bind the IPV6 socket\n"
            "   -b4 <ipv4>   Local IP to bind the IPV4 socket\n"
@@ -55,6 +58,7 @@ void print_help(char *name)
            "   --ltest <name> <port> Same as previous but connects to 127.0.0.1:80\n"
            "\nIf -b4|-b6 is not set they will bind to all available addresses.\n"
            "To disable IPV4 don't set -p4 or set to 0 (zero), same for IPV6.\n"
+           "If -4 and -6 are used as argument the last used will be preferred.\n"
            "Using -f|--fork disables -d|--debug\n\n"
            ,APP_VERSION, name);
     exit(2);
@@ -64,6 +68,7 @@ int main(int argc, char *argv[])
 {
     int ret = 0, debug = 0, port_v4 = 0, port_v6 = 0;
     char *bind_v4 = NULL, *bind_v6 = NULL, *name = *argv;
+    enum SOCK_FAMILY preferred_family = ANY;
 
     signal(SIGINT, sigproc);
     signal(SIGTERM, sigproc);
@@ -87,6 +92,10 @@ int main(int argc, char *argv[])
                 ret = 1;
             else if (!strcmp(*argv, "--help") || !strcmp(*argv, "-h"))
                 print_help(name);
+            else if (!strcmp(*argv, "--ipv4") || !strcmp(*argv, "-4"))
+                preferred_family = IPV4;
+            else if (!strcmp(*argv, "--ipv6") || !strcmp(*argv, "-6"))
+                preferred_family = IPV6;
             else if (!strcmp(*argv, "-p4") && argc > 1)
             {
                 port_v4 = atoi(*(++argv));
@@ -139,7 +148,9 @@ int main(int argc, char *argv[])
         printf("IPV4 - %s:%d\tIPV6 - [%s]:%d\n",
                bind_v4 ? bind_v4 : "0.0.0.0", port_v4,
                bind_v6 ? bind_v6 : "::", port_v6);
-    if (start_proxy(bind_v4, (unsigned short) port_v4, bind_v6, (unsigned short) port_v6, debug) > 0)
+    if (start_proxy(bind_v4, (unsigned short) port_v4,
+                    bind_v6, (unsigned short) port_v6,
+                    preferred_family, debug) > 0)
     {
         app_loop();
         ret = 0;

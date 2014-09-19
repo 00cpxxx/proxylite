@@ -25,7 +25,8 @@ int sock_end(void);
 enum SOCK_FAMILY
 {
     IPV4,
-    IPV6
+    IPV6,
+    ANY
 };
 
 enum SOCK_TYPE
@@ -57,7 +58,7 @@ int sock_connected(int sock);
 int sock_pending_data(int sock);
 int sock_ntop(void *addr, char *str);
 
-int resolve_name(char *name, void *buffer, unsigned short port);
+int resolve_name(char *name, void *buffer, unsigned short port, enum SOCK_FAMILY efamily);
 
 int is_local_address(void *addr);
 int match_local_address(int sock, void *addr);

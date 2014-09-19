@@ -219,7 +219,6 @@ some of them are listed below:
  - Implement Socks 4 and 5 (without authentication);
  - Adding a log to file adding the date, client IP address and the target URL;
  - Turn it into an HTTP server by removing the bridging stuff and adding file reading;
- - Add an extra option like -4/-6 from wget to force using a specific server family address;
  - Making the application multi-threaded and using some nice skills to deal with the C10k problem.
 
 I have been using the application for some time now and everything seems stable, never crashed

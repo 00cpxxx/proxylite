@@ -313,9 +313,9 @@ int sock_connect(void *buffer, unsigned long flags)
     return new_sock;
 }
 
-int resolve_name(char *name, void *buffer, unsigned short port)
+int resolve_name(char *name, void *buffer, unsigned short port, enum SOCK_FAMILY efamily)
 {
-    struct addrinfo *info;
+    struct addrinfo *info, *n;
     union MULTI_ADDR *addr;
     int res;
 
@@ -325,7 +325,25 @@ int resolve_name(char *name, void *buffer, unsigned short port)
         return 0;
 
     res = 1;
-    memcpy(addr, info->ai_addr, info->ai_addrlen);
+    n = info;
+    /* Try to match the requested family. */
+    if (efamily != ANY)
+    {
+        int family;
+
+        family = efamily == IPV4 ? AF_INET : AF_INET6;
+        do
+        {
+            if (n->ai_family == family)
+                break;
+            n = n->ai_next;
+        }
+        while (n);
+        /* If we can't default to the first one. */
+        if (!n)
+            n = info;
+    }
+    memcpy(addr, n->ai_addr, n->ai_addrlen);
     if (addr->generic.sa_family == AF_INET)
         addr->f4.sin_port = htons(port);
     else if (addr->generic.sa_family == AF_INET6)

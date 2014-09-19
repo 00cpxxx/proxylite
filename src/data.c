@@ -32,8 +32,8 @@
 #define os_sleep Sleep
 #endif
 
-#include "connection.h"
 #include "sock.h"
+#include "connection.h"
 
 /* What to send as reply to CONNECT requests, the Connection
  * close may be superfluous but it does not hurt. */
@@ -66,9 +66,10 @@ static struct CONNECTION *head;
 static int running, debug;
 static unsigned long global_sent, global_recv;
 static unsigned short port_v4, port_v6;
+static enum SOCK_FAMILY preferred_family;
 
 /* Return codes for the name resolve functions. Defines are used just to show
- * different ways to achieve the same thing. Do you now the advantages of enum? */
+ * different ways to achieve the same thing. Do you know the advantages of enum? */
 #define INVALID_REQUEST   -1
 #define INVALID_METHOD    -2
 #define INVALID_NO_HOST   -3
@@ -515,7 +516,7 @@ int resolve_address(char *host, unsigned short port, void *buffer)
     int res;
 
     dprintf1("... ");
-    res = resolve_name(host, buffer, port);
+    res = resolve_name(host, buffer, port, preferred_family);
     if (res <= 0)
     {
         dprintf1("Resolve '%s' failed with error %d.\n", host, res);
@@ -1009,7 +1010,8 @@ void app_loop(void)
 #undef FD_SETS_RE
 
 int start_proxy(char *bind_v4, unsigned short p_v4,
-                char *bind_v6, unsigned short p_v6, int debug_enable)
+                char *bind_v6, unsigned short p_v6,
+                enum SOCK_FAMILY p_family, int debug_enable)
 {
     if (!p_v4 && !p_v6)
     {
@@ -1020,6 +1022,7 @@ int start_proxy(char *bind_v4, unsigned short p_v4,
     /* We need the ports to test connection loops later. */
     port_v4 = p_v4;
     port_v6 = p_v6;
+    preferred_family = p_family;
 
     if (!sock_init())
         return -1;
