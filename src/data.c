@@ -335,6 +335,7 @@ struct CONNECTION* new_connection(int listen_sock)
             conn->server.sock = INVALID_SOCK;
             conn->unique_id = cfg.unique_id++;
             conn->error = ERROR_FREE;
+            conn->client.writable = 1;
             /* Very lame approach to reset the ID. */
             if (cfg.unique_id > 100000)
                 cfg.unique_id = 0;
@@ -441,8 +442,7 @@ int extract_host(char *header, char *verb, char *host, unsigned short *port, int
         else
         {
             /* The URI is not prefixed with http:// and we don't have
-             * the Host header, in this case the URI must be a host name.
-             * (p) already points to it. */
+             * the Host header, in this case the URI must be a host name. */
              after_host = after_uri;
         }
     }
@@ -740,7 +740,7 @@ void app_loop(void)
                     /* If we are not connected to a server or if the current request is for
                      * a different host. */
                     if (p->server.sock == INVALID_SOCK ||
-                        memcmp(&new_addr, p->server.addr, sizeof(new_addr)))
+                        memcmp(new_addr, p->server.addr, sizeof(new_addr)))
                     {
                         memcpy (p->server.addr, new_addr, sizeof(new_addr));
                         p->state = ST_CONNECT_SERVER;
@@ -750,7 +750,7 @@ void app_loop(void)
                         p->state = ST_BRIDGE;
                         p->reuses++; /* Statistics. */
                         /* Assume OK to send. */
-                        p->client.writable = p->server.writable = 1;
+                        p->server.writable = 1;
                     }
                     p->last_operation = now;
                 }
@@ -802,7 +802,7 @@ void app_loop(void)
                     if (p->client.writable)
                         FD_ADD_POLL(p->server.sock, &set[0]); /* Read. */
 
-                    if (!p->server.writable)
+                    if (!p->server.writable && p->state != ST_WAIT_CONNECTION)
                         FD_ADD_POLL(p->server.sock, &set[1]); /* Write. */
                 }
             }
@@ -820,7 +820,7 @@ void app_loop(void)
             else if (!p->header_sz && !p->request_end &&
                     (now - p->client.connection >= MAX_TIMEOUT_HEADER))
             {
-                /* We can't reply here the client didn't sent us the header, just abort. */
+                /* We can't reply here as the client didn't send us the header, just abort. */
                 p->state = ST_CLEAR;
                 dprintf1("#%d Wait for header timeout.\n", p->unique_id);
             }

@@ -59,7 +59,7 @@ void print_help(char *name)
            "\nIf -b4|-b6 is not set they will bind to all available addresses.\n"
            "To disable IPV4 don't set -p4 or set to 0 (zero), same for IPV6.\n"
            "If -4 and -6 are used as argument the last used will be preferred.\n"
-           "Using -f|--fork disables -d|--debug\n\n"
+           "Using -f|--fork disables -d|--debug.\n\n"
            ,APP_VERSION, name);
     exit(2);
 }
