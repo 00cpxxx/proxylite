@@ -149,6 +149,9 @@ when using the -d flag is mostly used for debugging purposes.
 
 All connections are subject to a general 60 seconds timeout after the server starts replying.
 And after receiving a client connection it has 10 seconds to send at least the full HTTP header.
+The timings are based in the time() function, that means a computer date/time change will affect
+all timeout measures. To solve this a monotonic clock measure could be used but for simplicity
+and compatibility between all OS we are not doing that.
 
 The command line parsing is very simple and will ignore errors, for example "-p4 -d 3000" is the
 same as "-p4 0" because the -d will be used as atoi() for the port and the 3000 will be ignored
