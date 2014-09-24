@@ -321,7 +321,7 @@ struct CONNECTION* new_connection(int listen_sock)
 {
     struct CONNECTION *conn = NULL;
     int new_sock;
-    char addr[SOCK_ADDR_SZ], str[SOCK_STR_SZ];
+    char addr[SOCK_ADDR_SZ];
 
     new_sock = sock_accept(listen_sock, addr, SOCK_ASYNC);
     if (new_sock != INVALID_SOCK)
@@ -329,6 +329,8 @@ struct CONNECTION* new_connection(int listen_sock)
         conn = calloc(1, sizeof(*conn));
         if (conn)
         {
+            char str[SOCK_STR_SZ];
+
             conn->client.sock = new_sock;
             memcpy(conn->client.addr, addr, sizeof(addr));
             conn->state = ST_CLIENT_CONNECTED;
@@ -553,7 +555,7 @@ void app_loop(void)
         struct CONNECTION *p, *new, *n;
         struct timeval timeout;
         fd_set set[3];
-        int maxsd, res, changes, fast_select, ok;
+        int maxsd, res, changes, fast_select;
         unsigned int i; /* Has to be unsigned to avoid warning due to sizeof. */
 
         /* Just to avoid burning the CPU when when are heavy-loaded and select()
@@ -577,7 +579,7 @@ void app_loop(void)
         if (current != now)
         {
             i = current - now;
-            dprintf1("Loops %d - Spent %d second(s) - Sent %lu Kb/s, Recv %lu Kb/s\n",
+            dprintf1("Loops %d - Spent %u second(s) - Sent %lu Kb/s, Recv %lu Kb/s\n",
                      loops_per_sec, i, cfg.global_sent / (1024 * i), cfg.global_recv / (1024 * i));
             cfg.global_sent = cfg.global_recv = 0;
             now = current;
@@ -870,6 +872,8 @@ void app_loop(void)
 
         for (p = cfg.head; changes && p; p = p->next)
         {
+            int ok;
+
             ok = 0;
             /* Receive data. */
             if (p->state == ST_BRIDGE || p->state == ST_CLIENT_CONNECTED)
@@ -960,8 +964,6 @@ void app_loop(void)
                     /* Received WRITE event? So we are connected. */
                     else if (FD_ISSET(p->server.sock, &set[1]))
                     {
-                        char buffer[4];
-
                         /* There is a bug in the kernel or the library or maybe
                          * it works like that as supposed... The problem is that
                          * the WRITE bit is set but the connection is not ready.
@@ -977,7 +979,11 @@ void app_loop(void)
                         if (!p->tunnel)
                             res = send_buffer(p->server.sock, &p->client.data);
                         else
+                        {
+                            char buffer[4];
+
                             res = sock_peek(p->server.sock, buffer, sizeof(buffer));
+                        }
                         if (res > 0 || !(res == -1 && CHECK_BROKEN))
                         {
                             dprintf1("#%d Connected.\n", p->unique_id);
@@ -1119,10 +1125,9 @@ void multi_test(int remote, char *str, unsigned short port)
     struct TEST_DATA
     {
         enum TEST_STATES state;
-        int sock, retry;
+        int sock;
         time_t connection;
     } conn[MAX_SOCK_TESTS];
-    time_t now;
 
     tests = tests_ok = test_silence = incomplete_opens = incomplete_sends = test_resets = 0;
 
@@ -1153,6 +1158,8 @@ void multi_test(int remote, char *str, unsigned short port)
     printf("Running...\n");
     while(tests < MAX_SOCK_TESTS)
     {
+        time_t now;
+
         os_sleep(5);
         now = time(NULL);
 
