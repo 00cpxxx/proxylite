@@ -6,7 +6,7 @@ About the Project
 An HTTP proxy with support for most common methods including CONNECT (mainly used for https).
 It's entirely written in C from scratch and compiles and runs in different OS like GNU/Linux,
 PC-BSD and Windows. This is a very simple application used as a tool to learn and apply some
-network concepts.
+network concepts. It's meant to be lightweight and single-threaded, thus the name proxy lite.
 
 Features
 --------
