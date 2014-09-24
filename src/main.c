@@ -25,7 +25,7 @@
 #include "sock.h"
 #include "connection.h"
 
-#define APP_VERSION "0.2"
+#define APP_VERSION "0.3"
 
 void sigproc(int sig)
 {
