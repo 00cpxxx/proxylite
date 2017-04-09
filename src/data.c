@@ -47,7 +47,7 @@
 #define HTTP_HOST_SZ (sizeof(HTTP_HOST_HEADER) - 1)
 
 /* Max cache to store before stalling the connection (stop recv() to
- * disable TCP window size), the amounted of memory allocated will be
+ * disable TCP window size), the amounte of memory allocated will be
  * slightly above this value. */
 #define HARD_BUFFER_LIMIT (80 * 1024)
 /* Max send/recv per time. */
@@ -173,7 +173,7 @@ int send_http_error(int sock, enum HTTP_ERROR error)
         "Connection: close\r\n\r\n"
         "<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">"
         "<html><head>"
-        "<title>Proxylite Error - %d</title>"
+        "<title>proxylite Error - %d</title>"
         "</head><body>"
         "<h2>%s</h2>"
         "</body></html>",
@@ -351,6 +351,7 @@ struct CONNECTION* new_connection(int listen_sock)
     return conn;
 }
 
+/* Returns the header size */
 int full_header(char *header, int sz)
 {
     char *p;
@@ -361,11 +362,12 @@ int full_header(char *header, int sz)
     return p != NULL ? (p - header) + 4 : 0;
 }
 
+/* Returns the size of the verb or zero if invalid */
 int valid_verb(char *verb)
 {
     /* Most common operations order in my opinion. */
-    static const char *valid[] = {"GET", "POST", "HEAD", "CONNECT", "PUT", "DELETE", "OPTIONS"};
-    static const int sizes[] = {3, 4, 4, 7, 3, 6, 7, 0};
+    static const char *valid[] = {"GET", "POST", "CONNECT", "HEAD", "PUT", "DELETE", "OPTIONS"};
+    static const int sizes[] = {3, 4, 7, 4, 3, 6, 7, 0};
     int i;
 
     for (i = 0; sizes[i]; i++)
@@ -549,7 +551,7 @@ void app_loop(void)
 
     cfg.running = 1;
     loops_per_sec = 0;
-    now = current = time(NULL);
+    now = time(NULL);
     while (cfg.running)
     {
         struct CONNECTION *p, *new, *n;
