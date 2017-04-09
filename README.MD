@@ -85,8 +85,8 @@ more powerful computer (ARM Cortex A5 with 512Mb of RAM) but the project still r
 When a client connects it is added to a double linked-list, the application loop runs through
 this list and checks the state of the connection making the appropriate operations. The first
 state is to wait for the client to send us an HTTP header, then the header is parsed and the
-target server name is resolved and the socket connected. After connected the client header
-is forwarded to the server and anything that comes from the server is relayed to the client.
+target server name is resolved and the socket connected. After connected the client header is
+forwarded to the server and anything that comes from the server is relayed back to the client.
 
 To simplify and make this operation faster we only change the header if necessary, we never
 add or remove anything from the header, except the server prefix from the URL.
@@ -114,7 +114,7 @@ is outdated and does not perform well, stating that some sort of poll variant sh
 That may be true but the aim of this project was to be portable, so select was chosen because
 it's present everywhere.
 
-The option SO_REUSEADDR is not used on purpose so you can see experience a TIME_WAIT status
+The option SO_REUSEADDR is not used on purpose so you can experience a TIME_WAIT status
 when killing and trying to restar the application. Also remember that SO_REUSEADDR in Windows
 versions <= XP has a dangerous semantic of allowing multiple different applications to bind
 to the same door (allowing to an old problem called port hijacking).
@@ -195,7 +195,7 @@ afford loosing that time.
 Drawbacks
 ---------
 The whole code runs in a single thread meaning that if something takes too much time the whole
-program performance is affected. Most socket operations are really fast and the non-blocing IO
+program performance is affected. Most socket operations are really fast and the non-blocking IO
 works very well, but unfortunately the name resolution used to find the IP of the servers is
 a blocking call so if the address is not already cached by the OS and the name server takes to
 long to respond the application will have to wait.
