@@ -313,8 +313,9 @@ void clear_connection(struct CONNECTION *conn)
         free(conn->server.data.buffer);
     if (conn->client.data.buffer)
         free(conn->client.data.buffer);
+    cfg.connections--;
     dprintf1("#%d Clear connection (requests : %d, reuses : %d, total : %d).\n",
-             conn->unique_id, conn->requests, conn->reuses, --cfg.connections);
+             conn->unique_id, conn->requests, conn->reuses, cfg.connections);
 }
 
 struct CONNECTION* new_connection(int listen_sock)
@@ -342,8 +343,9 @@ struct CONNECTION* new_connection(int listen_sock)
             if (cfg.unique_id > 100000)
                 cfg.unique_id = 0;
             sock_ntop(addr, str);
+            cfg.connections++;
             dprintf1("#%d New connection from '%s' (total : %d).\n",
-                     conn->unique_id, str, ++cfg.connections);
+                     conn->unique_id, str, cfg.connections);
         }
         else
             sock_close(new_sock);
