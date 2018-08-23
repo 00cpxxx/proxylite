@@ -278,6 +278,13 @@ int sock_create(enum SOCK_FAMILY efamily, enum SOCK_TYPE etype,
             sock_close(new_sock);
             new_sock = INVALID_SOCK;
         }
+        else
+        {
+            unsigned long buf = 256 * 1024;
+
+            setsockopt(new_sock, SOL_SOCKET, SO_RCVBUF, (char *)&buf, sizeof(buf));
+            setsockopt(new_sock, SOL_SOCKET, SO_SNDBUF, (char *)&buf, sizeof(buf));
+        }
     }
     return new_sock;
 }
