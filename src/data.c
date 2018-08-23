@@ -49,9 +49,9 @@
 /* Max cache to store before stalling the connection (stop recv() to
  * disable TCP window size), the amounte of memory allocated will be
  * slightly above this value. */
-#define HARD_BUFFER_LIMIT (80 * 1024)
+#define HARD_BUFFER_LIMIT (512 * 1024)
 /* Max send/recv per time. */
-#define MAX_BUFFER_SZ 8192
+#define MAX_BUFFER_SZ 128 * 1024
 /* A host name can have up to 255 bytes as per the standard. */
 #define MAX_HOST_NAME 255
 /* Timeout in seconds of silence between any side. */
