@@ -240,6 +240,9 @@ int send_buffer(int target_sock, struct DATA_BUFFER *data)
             dprintf2("Buffer sent %d/%d bytes, remaining %d bytes.\n",
                      res, send_sz, data->used - data->pos);
         }
+        else
+            dprintf3("Can't send %d bytes, errno %d\n",
+                     send_sz, get_errno);
         /* If we can't send there is no problem, we will try again later. */
     }
     return res;
@@ -561,10 +564,6 @@ void app_loop(void)
         fd_set set[3];
         int maxsd, res, changes, fast_select;
         unsigned int i; /* Has to be unsigned to avoid warning due to sizeof. */
-
-        /* Just to avoid burning the CPU when when are heavy-loaded and select()
-         * calls are returning instantly. */
-        os_sleep(2);
 
         FD_ZERO(&set[0]);
         FD_ZERO(&set[1]);
