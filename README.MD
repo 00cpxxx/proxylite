@@ -202,7 +202,7 @@ Drawbacks
 The whole code runs in a single thread meaning that if something takes too much time the whole
 program performance is affected. Most socket operations are really fast and the non-blocking IO
 works very well, but unfortunately the name resolution used to find the IP of the servers is
-a blocking call so if the address is not already cached by the OS and the name server takes to
+a blocking call so if the address is not already cached by the OS and the name server takes too
 long to respond the application will have to wait.
 
 The limit of sockets possible to take care at the same time is 128 in Windows and 1024 in Unix
@@ -216,9 +216,9 @@ the same reason.
 Final Considerations
 --------------------
 Our goals were achieved so I'm happy with the result, it was tested x86, x86_64 and ARM using
-GNU/Linux and x86 using PC-BSD. It also was tested in Windows XP, 7 and 8. To make it work in
-previous Windows versions I dropped the IPv6 stuff and changed the name resolution to use
-gethostbyname, this way it was able to run from Windows 95 to 8, these changes are not added
+GNU/Linux and x86 using PC-BSD/FreeBSD. It also was tested in Windows XP, 7 and 8. To make it
+work in previous Windows versions I dropped the IPv6 stuff and changed the name resolution to
+use gethostbyname, this way it was able to run from Windows 95 to 10, these changes are not added
 in the present code to eliminate the use of #ifdef to compile different versions. The Windows
 version also runs fine in Wine.
 
@@ -229,7 +229,7 @@ some of them are listed below:
  - Caching the resolved address in an ordered list (to use binary search) or a hash-table;
  - Implement Socks 4 and 5 (without authentication);
  - Adding a log to file adding the date, client IP address and the target URL;
- - Turn it into an HTTP server by removing the bridging stuff and adding file reading;
+ - Turn it into an HTTP server by removing the bridging stuff and adding file reading (why ?);
  - Making the application multi-threaded and using some nice skills to deal with the C10k problem.
 
 I have been using the application for some time now and everything seems stable, never crashed

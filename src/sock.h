@@ -79,7 +79,8 @@ int match_local_address(int sock, void *addr);
 #define CHECK_BROKEN (errno == ECONNABORTED || errno == ECONNRESET || errno == ECONNREFUSED)
 #define get_errno errno
 #else
-#ifndef _WIN32_WINNT
+#if !defined(_WIN32_WINNT) || (_WIN32_WINNT < 0x0501)
+#undef _WIN32_WINNT
 #define _WIN32_WINNT 0x0501
 #endif
 #ifndef WIN32_LEAN_AND_MEAN
