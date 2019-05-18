@@ -14,7 +14,7 @@ Features
  - Very simple with a lot of comments to help people understand the code flow;
  - Minimal to no changes to the HTTP header meaning that the server does not know this is a proxy;
  - Almost stateless operation that does not rely on analyzing the data from/to client/server;
- - Suppots HTTPS through the CONNECT method (FTP applications and even Skype can use that);
+ - Supports HTTPS through the CONNECT method (FTP applications and even Skype can use that);
  - Reports errors to users when possible instead of silently shutting down the connection;
  - Single thread, no messing with semaphores, mutexes or other synchronization functions.
 
@@ -40,8 +40,9 @@ Copied directly from the application running with -h parameter:
 	-p6 <port>   Port to bind the IPV6 socket
 	-b4 <ipv4>   Local IP to bind the IPV4 socket
 	-b6 <ipv6>   Local IP to bind the IPV6 socket
+	--relay <ip> <port> Send all traffic to another proxy server
 
-	 --test <name> <port> Do 100 connections to the specified proxy
+	--test <name> <port> Do 100 connections to the specified proxy
 	                       and request the '/' URI from 5 well known
 	                       sites, quit after the test.
 	--ltest <name> <port> Same as previous but connects to 127.0.0.1:80
@@ -63,6 +64,10 @@ Listen for IPv4 connections on port 3000 in the interface with address 192.168.0
 some debug information about the connections. In this case listening for IPv6 is disabled.
 
 In order to bind the same port for the IPv4 and IPv6 you have to specify the bind address.
+
+`./proxylite -p4 3128 --relay 10.0.0.1 8080`
+
+Blindly relay all traffic received on port 3128 to IP 10.0.0.1 port 8080. Can also use names.
 
 About the Code
 --------------
@@ -115,7 +120,7 @@ That may be true but the aim of this project was to be portable, so select was c
 it's present everywhere.
 
 The option SO_REUSEADDR is not used on purpose so you can experience a TIME_WAIT status
-when killing and trying to restar the application. Also remember that SO_REUSEADDR in Windows
+when killing and trying to restart the application. Also remember that SO_REUSEADDR in Windows
 versions <= XP has a dangerous semantic of allowing multiple different applications to bind
 to the same door (allowing to an old problem called port hijacking).
 

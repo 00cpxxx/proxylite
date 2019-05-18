@@ -104,7 +104,7 @@ int sock_ntop(void *buffer, char *str)
         res = !inet_ntop(AF_INET6, &addr->f6.sin6_addr, str, SOCK_STR_SZ);
 #else
         strcpy(str, "<Can't represent IPv6>");
-#endif // _WIN32
+#endif
     }
     return res;
 }

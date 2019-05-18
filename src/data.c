@@ -68,6 +68,8 @@ static struct CONFIG
     int running, debug;
     unsigned long global_sent, global_recv;
     unsigned short port_v4, port_v6;
+    char forward_addr[SOCK_ADDR_SZ];
+    int forward;
     enum SOCK_FAMILY preferred_family;
 } cfg;
 
@@ -671,15 +673,32 @@ void app_loop(void)
             }
             else if (p->state == ST_CLIENT_CONNECTED)
             {
-                /* If we have data check if the HTTP header is complete. */
-                if (p->client.data.used)
+                if(cfg.forward)
                 {
-                    res = full_header((char*) p->client.data.buffer, p->client.data.used);
-                    if (res)
+                    dprintf3("Forwarding connection to forward address.\n");
+
+                    memcpy(p->server.addr, cfg.forward_addr, sizeof(cfg.forward_addr));
+
+                    /* Assume connection is a bridge */
+                    p->state = ST_CONNECT_SERVER;
+                    p->header_sz = 1; /* fake to simplify */
+                    p->tunnel = 1;
+                    p->requests++;
+
+                    fast_select++; /* We need to get to the next state fast! */
+                }
+                else
+                {
+                    /* If we have data check if the HTTP header is complete. */
+                    if (p->client.data.used)
                     {
-                        fast_select++; /* We need to get to the next state fast! */
-                        p->header_sz = res;
-                        p->state = ST_FIND_HOST;
+                        res = full_header((char*) p->client.data.buffer, p->client.data.used);
+                        if (res)
+                        {
+                            fast_select++; /* We need to get to the next state fast! */
+                            p->header_sz = res;
+                            p->state = ST_FIND_HOST;
+                        }
                     }
                 }
             }
@@ -694,6 +713,7 @@ void app_loop(void)
                 if (res == STATUS_OK)
                 {
                     res = resolve_address(host, port, &new_addr);
+
                     if (res == STATUS_OK)
                     {
                         /* Smart people may try to bring the proxy down by making us loop
@@ -727,7 +747,7 @@ void app_loop(void)
                 fast_select++; /* We need to get to the next state fast! Good or bad. */
                 if (res == STATUS_OK)
                 {
-                    /* SSL tunnel? If yes discard the HTTP header. */
+                    /* CONNECT tunnel? If yes discard the HTTP header. */
                     if (!strcmp(verb, "CONNECT"))
                     {
                         p->tunnel = 1;
@@ -747,7 +767,7 @@ void app_loop(void)
                     if (p->server.sock == INVALID_SOCK ||
                         memcmp(new_addr, p->server.addr, sizeof(new_addr)))
                     {
-                        memcpy (p->server.addr, new_addr, sizeof(new_addr));
+                        memcpy(p->server.addr, new_addr, sizeof(new_addr));
                         p->state = ST_CONNECT_SERVER;
                     }
                     else
@@ -996,7 +1016,7 @@ void app_loop(void)
                             p->client.writable = p->server.writable = 1;
 
                             /* If this is a tunnel connection tell the client we are connected. */
-                            if (p->tunnel)
+                            if (p->tunnel && !cfg.forward)
                                 append_data(&p->server.data,
                                             (unsigned char*) DEFAULT_TUNNEL_RESPONSE,
                                             DEFAULT_TUNNEL_RESPONSE_SZ);
@@ -1023,7 +1043,9 @@ void app_loop(void)
 
 int start_proxy(char *bind_v4, unsigned short p_v4,
                 char *bind_v6, unsigned short p_v6,
-                enum SOCK_FAMILY preferred_family, int debug_enable)
+                enum SOCK_FAMILY preferred_family,
+                char *forward_addr, unsigned short forward_port,
+                int debug_enable)
 {
     if (!p_v4 && !p_v6)
     {
@@ -1038,6 +1060,18 @@ int start_proxy(char *bind_v4, unsigned short p_v4,
 
     if (!sock_init())
         return -1;
+
+    if(forward_addr)
+    {
+        if(resolve_address(forward_addr, forward_port, &cfg.forward_addr) != STATUS_OK)
+        {
+            printf("Failed to resolve forward server address '%s'\n", forward_addr);
+            return -2;
+        }
+        cfg.forward = 1;
+    }
+    else
+        cfg.forward = 0;
 
     cfg.debug = debug_enable;
 
@@ -1145,7 +1179,7 @@ void multi_test(int remote, char *str, unsigned short port)
     sock_init();
     if (resolve_address(str, port, address) != STATUS_OK)
     {
-        printf("Failed to resolve address %s\n", str);
+        printf("Failed to resolve address '%s'\n", str);
         sock_end();
         return;
     }

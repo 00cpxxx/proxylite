@@ -25,7 +25,7 @@
 #include "sock.h"
 #include "connection.h"
 
-#define APP_VERSION "0.3"
+#define APP_VERSION "0.4"
 
 void sigproc(int sig)
 {
@@ -51,8 +51,9 @@ void print_help(char *name)
            "   -p4 <port>   Port to bind the IPV4 socket\n"
            "   -p6 <port>   Port to bind the IPV6 socket\n"
            "   -b4 <ipv4>   Local IP to bind the IPV4 socket\n"
-           "   -b6 <ipv6>   Local IP to bind the IPV6 socket\n\n"
-           "    --test <name> <port> Do 100 connections to the specified proxy\n"
+           "   -b6 <ipv6>   Local IP to bind the IPV6 socket\n"
+           "   --relay <ip> <port> Send all traffic to another proxy server\n\n"
+           "   --test <name> <port> Do 100 connections to the specified proxy\n"
            "                         and request the '/' URI from 5 well known\n"
            "                         sites, quit after the test.\n"
            "   --ltest <name> <port> Same as previous but connects to 127.0.0.1:80\n"
@@ -66,8 +67,8 @@ void print_help(char *name)
 
 int main(int argc, char *argv[])
 {
-    int ret = 0, debug = 0, port_v4 = 0, port_v6 = 0;
-    char *bind_v4 = NULL, *bind_v6 = NULL, *name = *argv;
+    int ret = 0, debug = 0, port_v4 = 0, port_v6 = 0, relay_port = 0;
+    char *bind_v4 = NULL, *bind_v6 = NULL, *name = *argv, *relay_addr = NULL;
     enum SOCK_FAMILY preferred_family = ANY;
 
     signal(SIGINT, sigproc);
@@ -126,6 +127,12 @@ int main(int argc, char *argv[])
                 bind_v6 = *(++argv);
                 argc--;
             }
+            else if (!strcmp(*argv, "--relay") && argc > 2)
+            {
+                relay_addr = *(++argv);
+                relay_port = atoi(*(++argv));
+                argc -= 2;
+            }
         }
     }
     else
@@ -145,12 +152,16 @@ int main(int argc, char *argv[])
 
     ret = 1;
     if (debug)
+    {
         printf("IPV4 - %s:%d\tIPV6 - [%s]:%d\n",
                bind_v4 ? bind_v4 : "0.0.0.0", port_v4,
                bind_v6 ? bind_v6 : "::", port_v6);
+        if(relay_addr)
+            printf("RELAY SERVER - %s:%d\n", relay_addr, relay_port);
+    }
     if (start_proxy(bind_v4, (unsigned short) port_v4,
                     bind_v6, (unsigned short) port_v6,
-                    preferred_family, debug) > 0)
+                    preferred_family, relay_addr, relay_port, debug) > 0)
     {
         app_loop();
         ret = 0;
