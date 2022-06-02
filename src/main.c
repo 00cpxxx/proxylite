@@ -16,11 +16,18 @@
  * License along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA */
 
+#ifdef _WIN32
+ /* Need to link with Ws2_32.lib */
+#pragma comment (lib, "Ws2_32.lib")
+#endif
+
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include "sock.h"
 #include "connection.h"
