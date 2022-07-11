@@ -32,7 +32,7 @@
 #include "sock.h"
 #include "connection.h"
 
-#define APP_VERSION "0.4"
+#define APP_VERSION "0.5"
 
 void sigproc(int sig)
 {
@@ -174,5 +174,6 @@ int main(int argc, char *argv[])
         ret = 0;
     }
     end_proxy();
+
     return ret;
 }

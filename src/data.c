@@ -47,7 +47,7 @@
 #define HTTP_HOST_SZ (sizeof(HTTP_HOST_HEADER) - 1)
 
 /* Max cache to store before stalling the connection (stop recv() to
- * disable TCP window size), the amounte of memory allocated will be
+ * disable TCP window size), the amount of memory allocated will be
  * slightly above this value. */
 #define HARD_BUFFER_LIMIT (512 * 1024)
 /* Max send/recv per time. */
@@ -66,7 +66,7 @@ static struct CONFIG
     int master_sock[2], connections, unique_id;
     struct CONNECTION *head;
     int running, debug;
-    unsigned long global_sent, global_recv;
+    unsigned long global_sent, global_recv, global_memory;
     unsigned short port_v4, port_v6;
     char forward_addr[SOCK_ADDR_SZ];
     int forward;
@@ -146,9 +146,9 @@ struct CONNECTION
 };
 
 /* Different levels of log verbosity. The log is mostly for development only. */
-#define dprintf1 if(cfg.debug >= 1) printf
-#define dprintf2 if(cfg.debug >= 2) printf
-#define dprintf3 if(cfg.debug >= 3) printf
+#define dprintf1 if (cfg.debug >= 1) printf
+#define dprintf2 if (cfg.debug >= 2) printf
+#define dprintf3 if (cfg.debug >= 3) printf
 
 int send_http_error(int sock, enum HTTP_ERROR error)
 {
@@ -205,10 +205,13 @@ int append_data(struct DATA_BUFFER *data, unsigned char *lbuffer, int sz)
         int new_size;
 
         /* Plus 16 just to ensure there is always space for a NULL byte */
-        new_size = data->max ? data->max + data->max / 2 : MAX_BUFFER_SZ * 2;
-        new_buffer = realloc(data->buffer, new_size + 16);
+        new_size = (data->max ? data->max + data->max / 2 : MAX_BUFFER_SZ * 2) + 16;
+        new_buffer = realloc(data->buffer, new_size);
         if (!new_buffer)
             return -3;
+
+        cfg.global_memory += new_size - data->max;  /* increment new size */
+
         data->buffer = new_buffer;
         data->max = new_size;
     }
@@ -260,10 +263,12 @@ int recv_buffer(int source_sock, struct DATA_BUFFER *data, int relay_sock)
      * side is receiving it. */
     if (data->used >= HARD_BUFFER_LIMIT)
     {
+        dprintf3("Over %d bytes waiting in queue, client is too slow\n", data->used);
         /* Since we can't receive try at least sending some more buffer. */
-        if (relay_sock != INVALID_SOCK)
-            send_buffer(relay_sock, data);
-        return -2;
+        if (relay_sock == INVALID_SOCK || send_buffer(relay_sock, data) <= 0 ||
+            ((res = data->used - data->pos)) >= HARD_BUFFER_LIMIT)
+            return -2;
+        dprintf3("Could reduce buffer to %d bytes\n", res);
     }
 
     res = sock_recv(source_sock, p, sizeof(lbuffer));
@@ -275,6 +280,8 @@ int recv_buffer(int source_sock, struct DATA_BUFFER *data, int relay_sock)
          * sending things out of order. */
         if (relay_sock != INVALID_SOCK)
         {
+            /* As a last resort try to send what we have in the buffer before
+             * appending. */
             send_buffer(relay_sock, data);
             if (data->used == data->pos)
             {
@@ -315,9 +322,15 @@ void clear_connection(struct CONNECTION *conn)
     sock_close(conn->server.sock);
 
     if (conn->server.data.buffer)
+    {
+        cfg.global_memory -= conn->server.data.max;
         free(conn->server.data.buffer);
+    }
     if (conn->client.data.buffer)
+    {
+        cfg.global_memory -= conn->client.data.max;
         free(conn->client.data.buffer);
+    }
     cfg.connections--;
     dprintf1("#%d Clear connection (requests : %d, reuses : %d, total : %d).\n",
              conn->unique_id, conn->requests, conn->reuses, cfg.connections);
@@ -336,6 +349,8 @@ struct CONNECTION* new_connection(int listen_sock)
         if (conn)
         {
             char str[SOCK_STR_SZ];
+
+            cfg.global_memory += sizeof(*conn);
 
             conn->client.sock = new_sock;
             memcpy(conn->client.addr, addr, sizeof(addr));
@@ -429,7 +444,7 @@ int extract_host(char *header, char *verb, char *host, unsigned short *port, int
     host_ptr = strstr(eol, HTTP_HOST_HEADER);
 
     /* A CONNECT request will always have the host name as URI. */
-    if(!strcmp(verb, "CONNECT"))
+    if (!strcmp(verb, "CONNECT"))
     {
         after_host = after_uri;
     }
@@ -584,8 +599,9 @@ void app_loop(void)
         if (current != now)
         {
             i = current - now;
-            dprintf1("Loops %d - Spent %u second(s) - Sent %lu Kb/s, Recv %lu Kb/s\n",
-                     loops_per_sec, i, cfg.global_sent / (1024 * i), cfg.global_recv / (1024 * i));
+            dprintf1("Loops %d - Spent %u second(s) - Sent %lu Kb/s, Recv %lu Kb/s - Memory %lu Kb\n",
+                     loops_per_sec, i, cfg.global_sent / (1024 * i), cfg.global_recv / (1024 * i),
+                     cfg.global_memory / 1024);
             cfg.global_sent = cfg.global_recv = 0;
             now = current;
             loops_per_sec = 0;
@@ -612,6 +628,7 @@ void app_loop(void)
                 else if (p == cfg.head)
                     cfg.head = p->next;
 
+                cfg.global_memory -= sizeof(*p);
                 free(p);
                 continue;
             }
@@ -673,7 +690,7 @@ void app_loop(void)
             }
             else if (p->state == ST_CLIENT_CONNECTED)
             {
-                if(cfg.forward)
+                if (cfg.forward)
                 {
                     dprintf3("Forwarding connection to forward address.\n");
 
@@ -850,7 +867,9 @@ void app_loop(void)
                 dprintf1("#%d Wait for header timeout.\n", p->unique_id);
             }
         }
-        /* If we are not doing anything wait for 4 seconds and 10ms in the select(). */
+        /* If we are not doing anything wait for 4 seconds and 10ms in the
+         * select(). If we are doing stuff wait only for 10ms as we need
+         * to break and go back to send cached data. */
         timeout.tv_sec = fast_select ? 0 : 4;
         timeout.tv_usec = 10000;
         do
@@ -885,7 +904,7 @@ void app_loop(void)
                 changes--;
             }
             /* Check for errors in the listening socket. */
-            else if(FD_ISSET(cfg.master_sock[i], &set[2]))
+            else if (FD_ISSET(cfg.master_sock[i], &set[2]))
             {
                 cfg.running = 0;
                 dprintf1("Master socket error, quitting...\n");
@@ -914,7 +933,7 @@ void app_loop(void)
                     if (res > 0 || res == -2)
                         ok += res;
                     /* Was this side disconnected? Since this is the client just abort. */
-                    else if(!res)
+                    else if (!res)
                         p->state = ST_CLEAR;
                     changes--;
                 }
@@ -1061,9 +1080,9 @@ int start_proxy(char *bind_v4, unsigned short p_v4,
     if (!sock_init())
         return -1;
 
-    if(forward_addr)
+    if (forward_addr)
     {
-        if(resolve_address(forward_addr, forward_port, &cfg.forward_addr) != STATUS_OK)
+        if (resolve_address(forward_addr, forward_port, &cfg.forward_addr) != STATUS_OK)
         {
             printf("Failed to resolve forward server address '%s'\n", forward_addr);
             return -2;
@@ -1120,12 +1139,17 @@ void end_proxy(void)
         if (!p->tunnel && !p->request_end && p->header_sz)
             send_http_error(p->client.sock, PROXY_DOWN);
         clear_connection(p);
+
+        cfg.global_memory -= sizeof(*p);
         free(p);
     }
     cfg.head = NULL;
 
     if (!sock_end())
-        dprintf1("We leaked socket descriptors.\n");
+        dprintf1("/!\\ We leaked socket descriptors.\n");
+
+    if (cfg.global_memory)
+        dprintf1("/!\\ We leaked memory.\n");
 }
 
 void stop_proxy(void)
@@ -1193,7 +1217,7 @@ void multi_test(int remote, char *str, unsigned short port)
      * check for connected sockets and FIONREAD to check when we have something
      * to read. */
     printf("Running...\n");
-    while(tests < MAX_SOCK_TESTS)
+    while (tests < MAX_SOCK_TESTS)
     {
         time_t now;
 
@@ -1265,7 +1289,7 @@ void multi_test(int remote, char *str, unsigned short port)
                         tests_ok++;
                         conn[i].state = ST_CLOSE;
                     }
-                    else if(!sock_connected(conn[i].sock))
+                    else if (!sock_connected(conn[i].sock))
                     {
                         test_resets++;
                         conn[i].state = ST_CLOSE;

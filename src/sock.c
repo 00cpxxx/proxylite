@@ -100,7 +100,7 @@ int sock_ntop(void *buffer, char *str)
     else if (addr->generic.sa_family == AF_INET6)
     {
 #ifndef _WIN32
-    /* inet_ntop does not exist in <= XP. */
+        /* inet_ntop does not exist in <= XP. */
         res = !inet_ntop(AF_INET6, &addr->f6.sin6_addr, str, SOCK_STR_SZ);
 #else
         strcpy(str, "<Can't represent IPv6>");
@@ -380,7 +380,7 @@ int match_local_address(int sock, void *buffer)
         return 0;
     addr = buffer;
 
-    if (local.generic.sa_family != local.generic.sa_family)
+    if (local.generic.sa_family != addr->generic.sa_family)
         return 0;
 
     if (local.generic.sa_family == AF_INET)
